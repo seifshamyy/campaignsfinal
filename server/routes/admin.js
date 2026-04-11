@@ -1,5 +1,5 @@
 import { Router } from "express";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { prisma } from "../index.js";

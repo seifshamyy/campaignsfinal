@@ -1,6 +1,6 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { prisma } from "../index.js";
 import { signToken, requireAuth } from "../middleware/auth.js";
 
