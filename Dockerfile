@@ -2,6 +2,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# OpenSSL required by Prisma
+RUN apk add --no-cache openssl
+
 # Install server deps (skip postinstall — client dir doesn't exist yet)
 COPY package*.json ./
 RUN npm ci --ignore-scripts
@@ -20,6 +23,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# OpenSSL required by Prisma
+RUN apk add --no-cache openssl
+
 # Install server-only deps (skip postinstall — no client dir needed here)
 COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts
@@ -34,4 +40,5 @@ RUN mkdir -p uploads
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node server/index.js"]
+# db push syncs schema without needing migration files
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node server/index.js"]
