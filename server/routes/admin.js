@@ -141,12 +141,10 @@ const R2_WEBHOOK = "https://primary-production-9e01d.up.railway.app/webhook/be3b
 
 async function uploadToR2(buffer, originalName, mimetype) {
   const filename = originalName.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9._-]/g, "");
-  const url = `${R2_WEBHOOK}?filename=${encodeURIComponent(filename)}`;
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": mimetype, "X-Filename": filename },
-    body: buffer,
-  });
+  const form = new FormData();
+  form.append("filename", filename);
+  form.append("file", new File([buffer], filename, { type: mimetype }));
+  const resp = await fetch(R2_WEBHOOK, { method: "POST", body: form });
   const raw = await resp.text();
   console.log("[uploadToR2] status:", resp.status, "body:", raw);
   if (!resp.ok) throw new Error(`R2 webhook error ${resp.status}: ${raw}`);
