@@ -4,7 +4,7 @@ import {
   Trash2, Upload, AlertTriangle, Loader2
 } from "lucide-react";
 import { api } from "../lib/api.js";
-import { applyTheme } from "../components/ThemeProvider.jsx";
+import { applyTheme, useConfig } from "../components/ThemeProvider.jsx";
 
 function Section({ title, children }) {
   return (
@@ -42,6 +42,7 @@ function Toast({ msg, type }) {
 }
 
 export default function Admin() {
+  const { refreshConfig } = useConfig();
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -100,6 +101,7 @@ export default function Admin() {
         secondaryColor: form.secondaryColor,
         appName: form.appName,
       });
+      refreshConfig(); // sync sidebar app name / colors
       showToast("Settings saved successfully");
     } catch (err) {
       showToast(err.message || "Failed to save", "error");
@@ -168,6 +170,7 @@ export default function Admin() {
     try {
       const result = await api.uploadLogo(file);
       setConfig((c) => ({ ...c, logoUrl: result.url }));
+      refreshConfig(); // update sidebar immediately
       showToast("Logo uploaded");
     } catch (err) {
       showToast(err.message || "Upload failed", "error");
@@ -179,6 +182,7 @@ export default function Admin() {
     try {
       const result = await api.uploadFavicon(file);
       setConfig((c) => ({ ...c, faviconUrl: result.url }));
+      refreshConfig(); // update favicon in browser tab immediately
       showToast("Favicon uploaded");
     } catch (err) {
       showToast(err.message || "Upload failed", "error");

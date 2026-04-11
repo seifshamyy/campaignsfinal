@@ -1,22 +1,38 @@
-import { useEffect } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { api } from "../lib/api.js";
 
+const ConfigContext = createContext({ config: null, refreshConfig: () => {} });
+
+export function useConfig() {
+  return useContext(ConfigContext);
+}
+
 /**
- * ThemeProvider — fetches public config once on mount and:
- *  1. Injects CSS custom properties onto :root (--brand, --brand-hover, --accent, etc.)
- *  2. Updates the page <title>
- *  3. Swaps the <link rel="icon"> favicon dynamically
+ * ThemeProvider — fetches public config, applies CSS vars + favicon + title,
+ * and exposes `config` + `refreshConfig()` via context so any component can
+ * react to branding changes (e.g. sidebar logo after admin upload).
  */
 export default function ThemeProvider({ children }) {
-  useEffect(() => {
+  const [config, setConfig] = useState(null);
+
+  const refreshConfig = useCallback(() => {
     api.publicConfig()
       .then((cfg) => {
+        setConfig(cfg);
         applyTheme(cfg);
       })
       .catch(() => {});
   }, []);
 
-  return children;
+  useEffect(() => {
+    refreshConfig();
+  }, [refreshConfig]);
+
+  return (
+    <ConfigContext.Provider value={{ config, refreshConfig }}>
+      {children}
+    </ConfigContext.Provider>
+  );
 }
 
 export function applyTheme(cfg) {

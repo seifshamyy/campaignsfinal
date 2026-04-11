@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -12,22 +12,13 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { api } from "../lib/api.js";
-import { applyTheme } from "./ThemeProvider.jsx";
+import { useConfig } from "./ThemeProvider.jsx";
 
 export default function Layout({ children, adminMode }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const [config, setConfig] = useState(null);
+  const { config } = useConfig();
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  useEffect(() => {
-    api.publicConfig()
-      .then((cfg) => {
-        setConfig(cfg);
-        applyTheme(cfg);
-      })
-      .catch(() => {});
-  }, []);
 
   async function handleLogout() {
     await api.logout();
