@@ -137,28 +137,45 @@ router.put("/app-password", async (req, res) => {
   res.json({ success: true, enabled: true });
 });
 
-// POST /api/admin/upload-logo — stores as base64 data URL in DB (no disk needed)
+const R2_WEBHOOK = "https://primary-production-9e01d.up.railway.app/webhook/be3bfcdd-adb8-4fec-b2cb-91565ce8a23c";
+
+async function uploadToR2(buffer, originalName, mimetype) {
+  const filename = originalName.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9._-]/g, "");
+  const form = new FormData();
+  form.append("filename", filename);
+  form.append("file", new Blob([buffer], { type: mimetype }), filename);
+  const resp = await fetch(R2_WEBHOOK, { method: "POST", body: form });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`R2 webhook error ${resp.status}: ${text}`);
+  }
+  const data = await resp.json();
+  if (!data.link) throw new Error("R2 webhook returned no link");
+  return data.link;
+}
+
+// POST /api/admin/upload-logo — uploads to R2 via webhook, stores URL in DB
 router.post("/upload-logo", uploadImage.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
-    await prisma.config.update({ where: { id: 1 }, data: { logoUrl: dataUrl } });
-    res.json({ url: dataUrl });
+    const url = await uploadToR2(req.file.buffer, req.file.originalname, req.file.mimetype);
+    await prisma.config.update({ where: { id: 1 }, data: { logoUrl: url } });
+    res.json({ url });
   } catch (err) {
-    console.error("[upload-logo] error:", err.message, err.stack);
+    console.error("[upload-logo] error:", err.message);
     res.status(500).json({ error: err.message || "Upload failed" });
   }
 });
 
-// POST /api/admin/upload-favicon — stores as base64 data URL in DB (no disk needed)
+// POST /api/admin/upload-favicon — uploads to R2 via webhook, stores URL in DB
 router.post("/upload-favicon", uploadImage.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
-    await prisma.config.update({ where: { id: 1 }, data: { faviconUrl: dataUrl } });
-    res.json({ url: dataUrl });
+    const url = await uploadToR2(req.file.buffer, req.file.originalname, req.file.mimetype);
+    await prisma.config.update({ where: { id: 1 }, data: { faviconUrl: url } });
+    res.json({ url });
   } catch (err) {
-    console.error("[upload-favicon] error:", err.message, err.stack);
+    console.error("[upload-favicon] error:", err.message);
     res.status(500).json({ error: err.message || "Upload failed" });
   }
 });
