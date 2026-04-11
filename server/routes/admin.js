@@ -139,18 +139,28 @@ router.put("/app-password", async (req, res) => {
 
 // POST /api/admin/upload-logo — stores as base64 data URL in DB (no disk needed)
 router.post("/upload-logo", uploadImage.single("file"), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-  const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
-  await prisma.config.update({ where: { id: 1 }, data: { logoUrl: dataUrl } });
-  res.json({ url: dataUrl });
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+    await prisma.config.update({ where: { id: 1 }, data: { logoUrl: dataUrl } });
+    res.json({ url: dataUrl });
+  } catch (err) {
+    console.error("[upload-logo] error:", err.message, err.stack);
+    res.status(500).json({ error: err.message || "Upload failed" });
+  }
 });
 
 // POST /api/admin/upload-favicon — stores as base64 data URL in DB (no disk needed)
 router.post("/upload-favicon", uploadImage.single("file"), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-  const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
-  await prisma.config.update({ where: { id: 1 }, data: { faviconUrl: dataUrl } });
-  res.json({ url: dataUrl });
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+    await prisma.config.update({ where: { id: 1 }, data: { faviconUrl: dataUrl } });
+    res.json({ url: dataUrl });
+  } catch (err) {
+    console.error("[upload-favicon] error:", err.message, err.stack);
+    res.status(500).json({ error: err.message || "Upload failed" });
+  }
 });
 
 // GET /api/admin/stats
