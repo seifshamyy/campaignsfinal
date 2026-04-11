@@ -141,16 +141,17 @@ const R2_WEBHOOK = "https://primary-production-9e01d.up.railway.app/webhook/be3b
 
 async function uploadToR2(buffer, originalName, mimetype) {
   const filename = originalName.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9._-]/g, "");
-  const form = new FormData();
-  form.append("filename", filename);
-  form.append("file", new Blob([buffer], { type: mimetype }), filename);
-  const resp = await fetch(R2_WEBHOOK, { method: "POST", body: form });
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`R2 webhook error ${resp.status}: ${text}`);
-  }
-  const data = await resp.json();
-  if (!data.link) throw new Error("R2 webhook returned no link");
+  const url = `${R2_WEBHOOK}?filename=${encodeURIComponent(filename)}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": mimetype, "X-Filename": filename },
+    body: buffer,
+  });
+  const raw = await resp.text();
+  console.log("[uploadToR2] status:", resp.status, "body:", raw);
+  if (!resp.ok) throw new Error(`R2 webhook error ${resp.status}: ${raw}`);
+  const data = JSON.parse(raw);
+  if (!data.link) throw new Error(`R2 webhook returned no link. Got: ${raw}`);
   return data.link;
 }
 
@@ -178,6 +179,12 @@ router.post("/upload-favicon", uploadImage.single("file"), async (req, res) => {
     console.error("[upload-favicon] error:", err.message);
     res.status(500).json({ error: err.message || "Upload failed" });
   }
+});
+
+// DELETE /api/admin/clear-branding — wipes broken logo/favicon URLs from DB
+router.delete("/clear-branding", async (_req, res) => {
+  await prisma.config.update({ where: { id: 1 }, data: { logoUrl: null, faviconUrl: null } });
+  res.json({ success: true });
 });
 
 // GET /api/admin/stats
