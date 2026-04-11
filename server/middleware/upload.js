@@ -29,16 +29,8 @@ export const uploadFile = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
 });
 
-const imageStorage = multer.diskStorage({
-  destination: uploadsDir,
-  filename: (req, file, cb) => {
-    const name = req.body.type || "asset";
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${name}${ext}`);
-  },
-});
-
+// Use memory storage for images — stored as base64 in DB, no disk writes
 export const uploadImage = multer({
-  storage: imageStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
 });
