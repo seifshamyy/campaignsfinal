@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Send,
   LayoutTemplate,
-  Settings,
   LogOut,
   Menu,
   X,
@@ -31,7 +30,6 @@ export default function Layout({ children, adminMode }) {
         { to: "/",               icon: LayoutDashboard,  label: "Dashboard"    },
         { to: "/campaigns/new",  icon: Send,             label: "New Campaign" },
         { to: "/templates",      icon: LayoutTemplate,   label: "Templates"    },
-        { to: "/admin",          icon: Settings,         label: "Admin"        },
       ];
 
   function isActive(to) {
