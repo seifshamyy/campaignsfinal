@@ -18,7 +18,20 @@ function AuthGuard({ children }) {
   useEffect(() => {
     api.me()
       .then(() => setStatus("authed"))
-      .catch(() => setStatus("unauthed"));
+      .catch(async () => {
+        // If no app password is set, auto-login silently so the app is truly public
+        try {
+          const cfg = await api.publicConfig();
+          if (!cfg.requiresPassword) {
+            await api.login("");
+            setStatus("authed");
+          } else {
+            setStatus("unauthed");
+          }
+        } catch {
+          setStatus("unauthed");
+        }
+      });
   }, []);
 
   if (status === "loading") {
