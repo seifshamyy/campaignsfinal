@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Send,
   LayoutTemplate,
+  Settings,
   LogOut,
   Menu,
   X,
