@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Config {
+  id                Int       @id @default(1)
+
+  // Meta API Credentials
+  metaAccessToken   String?   @map("meta_access_token")
+  phoneNumberId     String?   @map("phone_number_id")
+  businessAccountId String?   @map("business_account_id")
+  wabaId            String?   @map("waba_id")
+
+  // App Auth
+  adminPassword     String    @map("admin_password")
+  appPassword       String?   @map("app_password")
+
+  // Branding
+  appName           String    @default("Campaign Manager") @map("app_name")
+  primaryColor      String    @default("#1e40af") @map("primary_color")
+  secondaryColor    String    @default("#7c3aed") @map("secondary_color")
+  logoUrl           String?   @map("logo_url")
+  faviconUrl        String?   @map("favicon_url")
+
+  // Settings
+  defaultCountryCode  String  @default("966") @map("default_country_code")
+  sendRatePerSecond   Int     @default(10) @map("send_rate_per_second")
+
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@map("config")
+}
+
+model Template {
+  id              String    @id @default(cuid())
+
+  metaTemplateId  String    @map("meta_template_id")
+  name            String
+  language        String
+  category        String
+  status          String
+
+  components      Json
+  paramSchema     Json      @map("param_schema")
+  exampleCsvHeaders String[] @map("example_csv_headers")
+
+  bodyText        String?   @map("body_text")
+  headerType      String?   @map("header_type")
+  headerText      String?   @map("header_text")
+  footerText      String?   @map("footer_text")
+  buttonTypes     String[]  @map("button_types")
+
+  lastSyncedAt    DateTime  @map("last_synced_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  campaigns       Campaign[]
+
+  @@unique([name, language])
+  @@map("templates")
+}
+
+model Campaign {
+  id              String    @id @default(cuid())
+
+  name            String
+  templateId      String    @map("template_id")
+  template        Template  @relation(fields: [templateId], references: [id])
+
+  status          String    @default("draft")
+
+  totalRecipients Int       @default(0) @map("total_recipients")
+  sent            Int       @default(0)
+  delivered       Int       @default(0)
+  read            Int       @default(0)
+  failed          Int       @default(0)
+
+  originalFileName String?  @map("original_file_name")
+
+  cancelRequested Boolean   @default(false) @map("cancel_requested")
+
+  startedAt       DateTime? @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  messages        Message[]
+
+  @@map("campaigns")
+}
+
+model Message {
+  id              String    @id @default(cuid())
+
+  campaignId      String    @map("campaign_id")
+  campaign        Campaign  @relation(fields: [campaignId], references: [id])
+
+  phoneNumber     String    @map("phone_number")
+  params          Json?
+
+  status          String    @default("pending")
+  metaMessageId   String?   @map("meta_message_id")
+  errorMessage    String?   @map("error_message")
+  errorCode       String?   @map("error_code")
+
+  sentAt          DateTime? @map("sent_at")
+  deliveredAt     DateTime? @map("delivered_at")
+  readAt          DateTime? @map("read_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([campaignId])
+  @@index([phoneNumber])
+  @@index([metaMessageId])
+  @@map("messages")
+}

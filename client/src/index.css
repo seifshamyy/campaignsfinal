@@ -1,0 +1,148 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design tokens (overridden dynamically by ThemeProvider) ─────────────── */
+:root {
+  --brand:        #1e40af;
+  --brand-hover:  #1d3eaa;
+  --brand-light:  #eff6ff;
+  --brand-muted:  #bfdbfe;
+  --accent:       #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-light: #f5f3ff;
+  --sidebar-bg:   #0f172a;
+  --sidebar-text: #94a3b8;
+  --sidebar-active-text: #f8fafc;
+  --sidebar-active-bg:   rgba(255,255,255,0.08);
+  --sidebar-hover-bg:    rgba(255,255,255,0.05);
+  --radius: 10px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04);
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+  body {
+    font-family: "IBM Plex Sans Arabic", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    background: #f8fafc;
+    color: #0f172a;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 { font-weight: 600; letter-spacing: -0.02em; }
+}
+
+@layer components {
+  /* ── Buttons ────────────────────────────────────────────────────────────── */
+  .btn {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed select-none whitespace-nowrap;
+  }
+  .btn-primary {
+    @apply btn text-white shadow-sm;
+    background: var(--brand);
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--brand-hover); }
+
+  .btn-accent {
+    @apply btn text-white shadow-sm;
+    background: var(--accent);
+  }
+  .btn-accent:hover:not(:disabled) { background: var(--accent-hover); }
+
+  .btn-secondary {
+    @apply btn bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 active:bg-slate-100;
+  }
+  .btn-ghost {
+    @apply btn text-slate-600 hover:bg-slate-100 active:bg-slate-200;
+  }
+  .btn-danger {
+    @apply btn bg-red-600 text-white shadow-sm hover:bg-red-700 active:bg-red-800;
+  }
+  .btn-sm { @apply px-3 py-1.5 text-xs; }
+  .btn-lg { @apply px-6 py-3 text-base rounded-xl; }
+
+  /* ── Inputs ─────────────────────────────────────────────────────────────── */
+  .input {
+    @apply w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400
+           focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-150;
+    --tw-ring-color: var(--brand);
+  }
+  .input:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 20%, transparent); border-color: var(--brand); }
+
+  /* ── Cards ──────────────────────────────────────────────────────────────── */
+  .card {
+    @apply bg-white rounded-xl border border-slate-200;
+    box-shadow: var(--shadow-sm);
+  }
+  .card-elevated {
+    @apply bg-white rounded-2xl border border-slate-200;
+    box-shadow: var(--shadow-md);
+  }
+
+  /* ── Badges ─────────────────────────────────────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  /* ── Page header ────────────────────────────────────────────────────────── */
+  .page-header {
+    @apply flex items-center justify-between mb-6;
+  }
+  .page-title {
+    @apply text-2xl font-bold text-slate-900;
+    letter-spacing: -0.03em;
+  }
+  .page-subtitle {
+    @apply text-sm text-slate-500 mt-0.5;
+  }
+}
+
+/* ── Status badges ───────────────────────────────────────────────────────── */
+.status-draft     { @apply badge bg-slate-100 text-slate-600; }
+.status-sending   { @apply badge bg-blue-100 text-blue-700; }
+.status-completed { @apply badge bg-emerald-100 text-emerald-700; }
+.status-failed    { @apply badge bg-red-100 text-red-700; }
+.status-cancelled { @apply badge bg-amber-100 text-amber-700; }
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+.sidebar {
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  width: 240px;
+  flex-shrink: 0;
+}
+.sidebar-link {
+  @apply flex items-center gap-3 px-3 py-2.5 mx-2 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer;
+  color: #475569;
+}
+.sidebar-link:hover { background: #f1f5f9; color: #0f172a; }
+.sidebar-link.active {
+  color: #0f172a;
+  font-weight: 600;
+}
+.sidebar-link.active { background: var(--brand-light); color: var(--brand); }
+.sidebar-link.active .sidebar-icon { color: var(--brand); }
+
+/* ── RTL template text ───────────────────────────────────────────────────── */
+.rtl-text { direction: rtl; text-align: right; }
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+.scrollbar-thin::-webkit-scrollbar { width: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 2px; }
+
+/* ── Animations ──────────────────────────────────────────────────────────── */
+@keyframes shake {
+  0%,100% { transform:translateX(0); }
+  20% { transform:translateX(-8px); }
+  40% { transform:translateX(8px); }
+  60% { transform:translateX(-5px); }
+  80% { transform:translateX(5px); }
+}
+.animate-shake { animation: shake 0.4s ease-in-out; }
+
+@keyframes fadeIn {
+  from { opacity:0; transform:translateY(4px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.2s ease-out; }
