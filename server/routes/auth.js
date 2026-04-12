@@ -15,12 +15,11 @@ const loginLimiter = rateLimit({
 // POST /api/auth/login
 router.post("/login", loginLimiter, async (req, res) => {
   const { password } = req.body;
-  if (!password) return res.status(400).json({ error: "Password required" });
 
   const config = await prisma.config.findFirst();
   if (!config) return res.status(500).json({ error: "App not configured" });
 
-  // If no appPassword is set, any password works (open access)
+  // If no appPassword is set, login freely with no password required
   if (!config.appPassword) {
     const token = signToken({ isAdmin: false });
     res.cookie("token", token, {
