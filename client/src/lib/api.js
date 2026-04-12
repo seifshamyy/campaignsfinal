@@ -1,18 +1,36 @@
 const BASE = "/api";
 
+function getStoredToken() {
+  return localStorage.getItem("auth_token");
+}
+
+function setStoredToken(token) {
+  if (token) localStorage.setItem("auth_token", token);
+}
+
+function clearStoredToken() {
+  localStorage.removeItem("auth_token");
+}
+
 async function request(method, path, body, isFormData = false) {
   const opts = {
     method,
     credentials: "include",
   };
 
+  const storedToken = getStoredToken();
+
   if (body !== undefined) {
     if (isFormData) {
+      if (storedToken) opts.headers = { Authorization: `Bearer ${storedToken}` };
       opts.body = body;
     } else {
       opts.headers = { "Content-Type": "application/json" };
+      if (storedToken) opts.headers.Authorization = `Bearer ${storedToken}`;
       opts.body = JSON.stringify(body);
     }
+  } else if (storedToken) {
+    opts.headers = { Authorization: `Bearer ${storedToken}` };
   }
 
   let res;
@@ -46,9 +64,20 @@ async function request(method, path, body, isFormData = false) {
 
 export const api = {
   // Auth
-  login: (password) => request("POST", "/auth/login", { password }),
-  adminLogin: (password) => request("POST", "/auth/admin-login", { password }),
-  logout: () => request("POST", "/auth/logout"),
+  login: async (password) => {
+    const data = await request("POST", "/auth/login", { password });
+    setStoredToken(data?.token);
+    return data;
+  },
+  adminLogin: async (password) => {
+    const data = await request("POST", "/auth/admin-login", { password });
+    setStoredToken(data?.token);
+    return data;
+  },
+  logout: async () => {
+    clearStoredToken();
+    return request("POST", "/auth/logout");
+  },
   me: () => request("GET", "/auth/me"),
   publicConfig: () => request("GET", "/auth/config-public"),
 
