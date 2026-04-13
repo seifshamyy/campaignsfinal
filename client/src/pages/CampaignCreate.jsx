@@ -198,12 +198,12 @@ export default function CampaignCreate() {
   useEffect(() => {
     async function init() {
       try {
-        const [phones, adminConfig] = await Promise.all([
-          api.getPhoneNumbers(),
-          api.getAdminConfig(),
+        const [phones, cfg] = await Promise.all([
+          api.getAccountPhoneNumbers(),
+          api.publicConfig(),
         ]);
         setPhoneNumbers(phones);
-        setDefaultCC(adminConfig?.defaultCountryCode || "966");
+        setDefaultCC(cfg?.defaultCountryCode || "966");
 
         // Auto-select single phone number
         if (phones.length === 1) setSelectedPhoneNumber(phones[0]);

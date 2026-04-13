@@ -132,6 +132,9 @@ export const api = {
     return request("GET", s ? `/auth/config-public?slug=${encodeURIComponent(s)}` : "/auth/config-public");
   },
 
+  // ── Phone Numbers (user-accessible) ──────────────────────────────────────
+  getAccountPhoneNumbers: () => request("GET", "/phone-numbers"),
+
   // ── Templates ─────────────────────────────────────────────────────────────
   getTemplates: (phoneNumberId) => {
     const qs = phoneNumberId ? `?phoneNumberId=${phoneNumberId}` : "";

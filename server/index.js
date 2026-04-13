@@ -13,6 +13,7 @@ import templateRoutes from "./routes/templates.js";
 import campaignRoutes from "./routes/campaigns.js";
 import uploadRoutes from "./routes/uploads.js";
 import superAdminRoutes from "./routes/super-admin.js";
+import phoneNumberRoutes from "./routes/phone-numbers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const prisma = new PrismaClient();
@@ -37,6 +38,7 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 // ── API Routes ──────────────────────────────────────────────────────────────
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/phone-numbers", phoneNumberRoutes);
 app.use("/api/templates", templateRoutes);
 app.use("/api/campaigns", campaignRoutes);
 app.use("/api/upload", uploadRoutes);

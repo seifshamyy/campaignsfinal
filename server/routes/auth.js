@@ -106,6 +106,7 @@ router.get("/config-public", async (req, res) => {
     faviconUrl: account?.faviconUrl || null,
     requiresPassword: !!account?.appPassword,
     accountFound: !!account,
+    defaultCountryCode: account?.defaultCountryCode || "966",
   });
 });
 

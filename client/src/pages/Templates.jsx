@@ -24,7 +24,7 @@ export default function Templates() {
 
   async function loadPhones() {
     try {
-      const phones = await api.getPhoneNumbers();
+      const phones = await api.getAccountPhoneNumbers();
       setPhoneNumbers(phones);
       if (phones.length === 1 && !selectedPhoneId) {
         setSelectedPhoneId(phones[0].id);
