@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { api } from "../lib/api.js";
+import { api, getStoredSlug } from "../lib/api.js";
 
 const ConfigContext = createContext({ config: null, refreshConfig: () => {} });
 
@@ -20,7 +20,11 @@ export default function ThemeProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    refreshConfig();
+    // Only load account branding if a slug is already known.
+    // Without a slug, stay on default blue — prevents the first account in
+    // the DB from leaking its branding onto every login page.
+    const slug = getStoredSlug();
+    if (slug) refreshConfig(slug);
   }, [refreshConfig]);
 
   return (
