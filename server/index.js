@@ -12,6 +12,7 @@ import adminRoutes from "./routes/admin.js";
 import templateRoutes from "./routes/templates.js";
 import campaignRoutes from "./routes/campaigns.js";
 import uploadRoutes from "./routes/uploads.js";
+import superAdminRoutes from "./routes/super-admin.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const prisma = new PrismaClient();
@@ -31,7 +32,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve uploaded assets (logo, favicon)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // ── API Routes ──────────────────────────────────────────────────────────────
@@ -40,6 +40,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/templates", templateRoutes);
 app.use("/api/campaigns", campaignRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/super-admin", superAdminRoutes);
 
 // ── Static client ───────────────────────────────────────────────────────────
 const clientDist = path.join(__dirname, "../client/dist");
@@ -48,27 +49,27 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(clientDist, "index.html"));
 });
 
-// ── DB seed: ensure Config row exists ───────────────────────────────────────
-async function seedConfig() {
-  const existing = await prisma.config.findFirst();
-  if (!existing) {
-    const hashed = await bcrypt.hash("admin", 12);
-    await prisma.config.create({
-      data: { id: 1, adminPassword: hashed },
-    });
-    console.log("Created default config (admin password: admin)");
+// ── Seed: ensure SuperAdmin exists ──────────────────────────────────────────
+async function seed() {
+  const superAdmin = await prisma.superAdmin.findFirst();
+  if (!superAdmin) {
+    const password = process.env.SUPER_ADMIN_PASSWORD || "superadmin";
+    const hashed = await bcrypt.hash(password, 12);
+    await prisma.superAdmin.create({ data: { id: 1, password: hashed } });
+    console.log(`[seed] Super admin created.`);
+    console.log(`[seed] ⚠️  Default password: "${password}" — CHANGE THIS at /super-admin`);
   }
 }
 
 // ── Start ───────────────────────────────────────────────────────────────────
-seedConfig()
+seed()
   .then(() => {
     app.listen(PORT, () => {
       console.log(`WhatsApp Campaign Manager running on port ${PORT}`);
     });
   })
   .catch((err) => {
-    console.error("Failed to seed config:", err);
+    console.error("Failed to seed:", err);
     process.exit(1);
   });
 

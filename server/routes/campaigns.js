@@ -13,13 +13,16 @@ router.get("/stats", async (req, res) => {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const [totalCampaigns, totalMessages, thisMonth, failedMessages] =
-    await Promise.all([
-      prisma.campaign.count(),
-      prisma.message.count({ where: { status: { in: ["sent", "delivered", "read"] } } }),
-      prisma.campaign.count({ where: { createdAt: { gte: startOfMonth } } }),
-      prisma.message.count({ where: { status: "failed" } }),
-    ]);
+  const [totalCampaigns, totalMessages, thisMonth, failedMessages] = await Promise.all([
+    prisma.campaign.count({ where: { accountId: req.accountId } }),
+    prisma.message.count({
+      where: { status: { in: ["sent", "delivered", "read"] }, campaign: { accountId: req.accountId } },
+    }),
+    prisma.campaign.count({ where: { accountId: req.accountId, createdAt: { gte: startOfMonth } } }),
+    prisma.message.count({
+      where: { status: "failed", campaign: { accountId: req.accountId } },
+    }),
+  ]);
 
   const total = totalMessages + failedMessages;
   const successRate = total > 0 ? Math.round((totalMessages / total) * 100) : 0;
@@ -35,12 +38,16 @@ router.get("/", async (req, res) => {
 
   const [campaigns, total] = await Promise.all([
     prisma.campaign.findMany({
+      where: { accountId: req.accountId },
       skip,
       take: limit,
       orderBy: { createdAt: "desc" },
-      include: { template: { select: { name: true, language: true } } },
+      include: {
+        template: { select: { name: true, language: true } },
+        phoneNumber: { select: { label: true, displayNumber: true } },
+      },
     }),
-    prisma.campaign.count(),
+    prisma.campaign.count({ where: { accountId: req.accountId } }),
   ]);
 
   res.json({ campaigns, total, page, pages: Math.ceil(total / limit) });
@@ -48,27 +55,36 @@ router.get("/", async (req, res) => {
 
 // POST /api/campaigns
 router.post("/", async (req, res) => {
-  const { name, templateId, rows, columnMapping, originalFileName } = req.body;
+  const { name, templateId, phoneNumberId, rows, columnMapping, originalFileName } = req.body;
 
   if (!templateId || !rows?.length) {
     return res.status(400).json({ error: "templateId and rows are required" });
   }
+  if (!phoneNumberId) {
+    return res.status(400).json({ error: "phoneNumberId is required" });
+  }
 
-  const config = await prisma.config.findFirst();
-  const defaultCC = config?.defaultCountryCode || "966";
+  // Verify phone number belongs to this account
+  const phoneNumber = await prisma.phoneNumber.findFirst({
+    where: { id: phoneNumberId, accountId: req.accountId },
+  });
+  if (!phoneNumber) return res.status(404).json({ error: "Phone number not found" });
 
-  const template = await prisma.template.findUnique({ where: { id: templateId } });
+  // Verify template belongs to this phone number
+  const template = await prisma.template.findFirst({
+    where: { id: templateId, phoneNumberId },
+  });
   if (!template) return res.status(404).json({ error: "Template not found" });
 
-  // Process and validate rows
+  const account = await prisma.account.findUnique({ where: { id: req.accountId } });
+  const defaultCC = account?.defaultCountryCode || "966";
+
   const validMessages = [];
   const errors = [];
   const seenPhones = new Set();
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-
-    // Map columns to expected keys
     const mapped = {};
     if (columnMapping) {
       for (const [targetKey, sourceKey] of Object.entries(columnMapping)) {
@@ -86,44 +102,36 @@ router.post("/", async (req, res) => {
       errors.push({ row: i + 1, phone: rawPhone, error: phoneValidation.error });
       continue;
     }
-
     if (seenPhones.has(phone)) {
       errors.push({ row: i + 1, phone, error: "Duplicate phone number" });
       continue;
     }
-
     seenPhones.add(phone);
 
-    // Build params object (everything except phone)
     const params = { ...mapped };
     delete params.phone_number;
     delete params.phone;
     delete params.mobile;
-
     validMessages.push({ phoneNumber: phone, params });
   }
 
   if (validMessages.length === 0) {
-    return res.status(400).json({
-      error: "No valid rows found",
-      validationErrors: errors,
-    });
+    return res.status(400).json({ error: "No valid rows found", validationErrors: errors });
   }
 
   const campaignName =
     name ||
     `${template.name} — ${new Date().toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
+      month: "short", day: "numeric", year: "numeric",
     })}`;
 
-  // Create campaign + messages in a transaction
   const campaign = await prisma.$transaction(async (tx) => {
     const c = await tx.campaign.create({
       data: {
         name: campaignName,
         templateId,
+        accountId: req.accountId,
+        phoneNumberId,
         status: "draft",
         totalRecipients: validMessages.length,
         originalFileName,
@@ -142,10 +150,7 @@ router.post("/", async (req, res) => {
     return c;
   });
 
-  // Start execution in background
-  executeCampaign(campaign.id).catch((err) =>
-    console.error("Campaign execution error:", err)
-  );
+  executeCampaign(campaign.id).catch((err) => console.error("Campaign execution error:", err));
 
   res.json({
     campaign: { ...campaign, totalRecipients: validMessages.length },
@@ -155,11 +160,11 @@ router.post("/", async (req, res) => {
   });
 });
 
-// GET /api/campaigns/:id/debug-payload — returns the Meta API payload + full curl for the first message
+// GET /api/campaigns/:id/debug-payload
 router.get("/:id/debug-payload", async (req, res) => {
-  const campaign = await prisma.campaign.findUnique({
-    where: { id: req.params.id },
-    include: { template: true },
+  const campaign = await prisma.campaign.findFirst({
+    where: { id: req.params.id, accountId: req.accountId },
+    include: { template: true, phoneNumber: true },
   });
   if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
@@ -169,10 +174,9 @@ router.get("/:id/debug-payload", async (req, res) => {
   });
   if (!message) return res.status(404).json({ error: "No messages found" });
 
-  const config = await prisma.config.findFirst();
   const { decryptToken } = await import("../services/meta-api.js");
-  const token = decryptToken(config?.metaAccessToken) || "TOKEN_NOT_SET";
-  const phoneNumberId = config?.phoneNumberId || "PHONE_ID_NOT_SET";
+  const token = decryptToken(campaign.phoneNumber?.metaAccessToken) || "TOKEN_NOT_SET";
+  const phoneNumberId = campaign.phoneNumber?.phoneNumberId || "PHONE_ID_NOT_SET";
 
   const rowData = { phone_number: message.phoneNumber, ...(message.params || {}) };
   const payload = buildMetaPayload(campaign.template, rowData, campaign.template.paramSchema);
@@ -185,9 +189,12 @@ router.get("/:id/debug-payload", async (req, res) => {
 
 // GET /api/campaigns/:id
 router.get("/:id", async (req, res) => {
-  const campaign = await prisma.campaign.findUnique({
-    where: { id: req.params.id },
-    include: { template: { select: { name: true, language: true, paramSchema: true } } },
+  const campaign = await prisma.campaign.findFirst({
+    where: { id: req.params.id, accountId: req.accountId },
+    include: {
+      template: { select: { name: true, language: true, paramSchema: true } },
+      phoneNumber: { select: { id: true, label: true, displayNumber: true } },
+    },
   });
   if (!campaign) return res.status(404).json({ error: "Campaign not found" });
   res.json(campaign);
@@ -205,19 +212,14 @@ router.get("/:id/messages", async (req, res) => {
   if (phone) where.phoneNumber = { contains: phone };
 
   const [messages, total] = await Promise.all([
-    prisma.message.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: { createdAt: "asc" },
-    }),
+    prisma.message.findMany({ where, skip, take: limit, orderBy: { createdAt: "asc" } }),
     prisma.message.count({ where }),
   ]);
 
   res.json({ messages, total, page, pages: Math.ceil(total / limit) });
 });
 
-// GET /api/campaigns/:id/progress  — SSE
+// GET /api/campaigns/:id/progress — SSE
 router.get("/:id/progress", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -227,7 +229,6 @@ router.get("/:id/progress", (req, res) => {
   const { id } = req.params;
   registerSseClient(id, res);
 
-  // Heartbeat every 15s
   const heartbeat = setInterval(() => {
     try { res.write(": heartbeat\n\n"); } catch {}
   }, 15000);
@@ -240,20 +241,23 @@ router.get("/:id/progress", (req, res) => {
 
 // POST /api/campaigns/:id/cancel
 router.post("/:id/cancel", async (req, res) => {
-  const campaign = await prisma.campaign.findUnique({ where: { id: req.params.id } });
+  const campaign = await prisma.campaign.findFirst({
+    where: { id: req.params.id, accountId: req.accountId },
+  });
   if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
   await prisma.campaign.update({
     where: { id: req.params.id },
     data: { cancelRequested: true },
   });
-
   res.json({ success: true });
 });
 
 // GET /api/campaigns/:id/report — CSV download
 router.get("/:id/report", async (req, res) => {
-  const campaign = await prisma.campaign.findUnique({ where: { id: req.params.id } });
+  const campaign = await prisma.campaign.findFirst({
+    where: { id: req.params.id, accountId: req.accountId },
+  });
   if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
   const messages = await prisma.message.findMany({
@@ -283,17 +287,14 @@ router.get("/:id/report", async (req, res) => {
     .join("\n");
 
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader(
-    "Content-Disposition",
-    `attachment; filename="campaign_${campaign.id}_report.csv"`
-  );
+  res.setHeader("Content-Disposition", `attachment; filename="campaign_${campaign.id}_report.csv"`);
   res.send(csv);
 });
 
 // POST /api/campaigns/:id/retry-failed
 router.post("/:id/retry-failed", async (req, res) => {
-  const original = await prisma.campaign.findUnique({
-    where: { id: req.params.id },
+  const original = await prisma.campaign.findFirst({
+    where: { id: req.params.id, accountId: req.accountId },
     include: { template: true },
   });
   if (!original) return res.status(404).json({ error: "Campaign not found" });
@@ -306,12 +307,13 @@ router.post("/:id/retry-failed", async (req, res) => {
     return res.status(400).json({ error: "No failed messages to retry" });
   }
 
-  const retryName = `${original.name} (Retry)`;
   const campaign = await prisma.$transaction(async (tx) => {
     const c = await tx.campaign.create({
       data: {
-        name: retryName,
+        name: `${original.name} (Retry)`,
         templateId: original.templateId,
+        accountId: req.accountId,
+        phoneNumberId: original.phoneNumberId,
         status: "draft",
         totalRecipients: failedMessages.length,
       },
@@ -330,7 +332,6 @@ router.post("/:id/retry-failed", async (req, res) => {
   });
 
   executeCampaign(campaign.id).catch(console.error);
-
   res.json({ campaign });
 });
 

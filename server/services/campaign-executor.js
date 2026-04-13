@@ -19,49 +19,45 @@ function emitSse(campaignId, event, data) {
   if (!clients || clients.size === 0) return;
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   clients.forEach((res) => {
-    try {
-      res.write(msg);
-    } catch {
-      // client disconnected
-    }
+    try { res.write(msg); } catch {}
   });
 }
 
-// ── Fatal error codes that should stop the campaign ──────────────────────────
 const FATAL_CODES = new Set([190]); // Token expired
-
-// ── Error codes to log and skip (don't retry) ─────────────────────────────
 const SKIP_CODES = new Set([131026, 131047, 131009, 132000, 133010]);
 
 /**
- * Execute a campaign: send all pending messages with rate limiting.
- * Runs in the background — does not block the HTTP response.
+ * Execute a campaign: reads credentials from the campaign's own PhoneNumber.
  */
 export async function executeCampaign(campaignId) {
-  const config = await prisma.config.findFirst();
-  if (!config?.metaAccessToken) {
+  // Load campaign with phone number credentials
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    include: {
+      template: true,
+      phoneNumber: true,
+      account: { select: { sendRatePerSecond: true } },
+    },
+  });
+
+  if (!campaign) return;
+
+  const plainToken = decryptToken(campaign.phoneNumber?.metaAccessToken);
+
+  if (!plainToken || !campaign.phoneNumber?.phoneNumberId) {
     await prisma.campaign.update({
       where: { id: campaignId },
       data: { status: "failed" },
     });
-    emitSse(campaignId, "error", { message: "Meta API not configured" });
+    emitSse(campaignId, "error", { message: "Meta credentials not configured for this phone number" });
     return;
   }
 
-  const plainToken = decryptToken(config.metaAccessToken);
   const client = new MetaApiClient({
     accessToken: plainToken,
-    phoneNumberId: config.phoneNumberId,
-    wabaId: config.wabaId,
+    phoneNumberId: campaign.phoneNumber.phoneNumberId,
+    wabaId: campaign.phoneNumber.wabaId,
   });
-
-  // Fetch campaign + template + pending messages
-  const campaign = await prisma.campaign.findUnique({
-    where: { id: campaignId },
-    include: { template: true },
-  });
-
-  if (!campaign) return;
 
   const messages = await prisma.message.findMany({
     where: { campaignId, status: "pending" },
@@ -69,7 +65,8 @@ export async function executeCampaign(campaignId) {
   });
 
   const total = campaign.totalRecipients;
-  const delayMs = Math.round(1000 / (config.sendRatePerSecond || 10));
+  const sendRate = campaign.account?.sendRatePerSecond || 10;
+  const delayMs = Math.round(1000 / sendRate);
 
   await prisma.campaign.update({
     where: { id: campaignId },
@@ -95,16 +92,8 @@ export async function executeCampaign(campaignId) {
       return;
     }
 
-    const rowData = {
-      phone_number: msg.phoneNumber,
-      ...(msg.params || {}),
-    };
-
-    const payload = buildMetaPayload(
-      campaign.template,
-      rowData,
-      campaign.template.paramSchema
-    );
+    const rowData = { phone_number: msg.phoneNumber, ...(msg.params || {}) };
+    const payload = buildMetaPayload(campaign.template, rowData, campaign.template.paramSchema);
 
     try {
       const result = await sendWithRetry(client, payload);
@@ -112,23 +101,14 @@ export async function executeCampaign(campaignId) {
 
       await prisma.message.update({
         where: { id: msg.id },
-        data: {
-          status: "sent",
-          metaMessageId: metaId,
-          sentAt: new Date(),
-        },
+        data: { status: "sent", metaMessageId: metaId, sentAt: new Date() },
       });
 
       sent++;
-      await prisma.campaign.update({
-        where: { id: campaignId },
-        data: { sent },
-      });
+      await prisma.campaign.update({ where: { id: campaignId }, data: { sent } });
 
       emitSse(campaignId, "progress", {
-        sent,
-        failed,
-        total,
+        sent, failed, total,
         currentPhone: msg.phoneNumber,
         status: "sent",
         metaMessageId: metaId,
@@ -137,31 +117,19 @@ export async function executeCampaign(campaignId) {
       const code = String(err.code || "");
       const errorMsg = err.message || "Unknown error";
 
-      // Log full Meta response to server console so it's always visible
       console.error(`[campaign ${campaignId}] FAILED ${msg.phoneNumber}:`, errorMsg);
-      if (err.metaResponse) {
-        console.error("  Meta response:", JSON.stringify(err.metaResponse));
-      }
+      if (err.metaResponse) console.error("  Meta response:", JSON.stringify(err.metaResponse));
 
       await prisma.message.update({
         where: { id: msg.id },
-        data: {
-          status: "failed",
-          errorMessage: errorMsg,
-          errorCode: code,
-        },
+        data: { status: "failed", errorMessage: errorMsg, errorCode: code },
       });
 
       failed++;
-      await prisma.campaign.update({
-        where: { id: campaignId },
-        data: { failed },
-      });
+      await prisma.campaign.update({ where: { id: campaignId }, data: { failed } });
 
       emitSse(campaignId, "progress", {
-        sent,
-        failed,
-        total,
+        sent, failed, total,
         currentPhone: msg.phoneNumber,
         status: "failed",
         error: errorMsg,
@@ -169,18 +137,13 @@ export async function executeCampaign(campaignId) {
         metaResponse: err.metaResponse || null,
       });
 
-      // Token expired — stop campaign
       if (FATAL_CODES.has(err.code)) {
         await prisma.campaign.update({
           where: { id: campaignId },
-          data: {
-            status: "failed",
-            completedAt: new Date(),
-          },
+          data: { status: "failed", completedAt: new Date() },
         });
         emitSse(campaignId, "error", {
-          message:
-            "Meta access token expired. Please update your token in the Admin panel.",
+          message: "Meta access token expired. Please update your token in Admin settings.",
         });
         return;
       }

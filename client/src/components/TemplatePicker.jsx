@@ -3,7 +3,7 @@ import { Search, RefreshCw, AlertCircle } from "lucide-react";
 import { api } from "../lib/api.js";
 import TemplateCard from "./TemplateCard.jsx";
 
-export default function TemplatePicker({ selected, onSelect }) {
+export default function TemplatePicker({ selected, onSelect, phoneNumberId }) {
   const [templates, setTemplates] = useState([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -16,11 +16,9 @@ export default function TemplatePicker({ selected, onSelect }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.getTemplates();
+      const data = await api.getTemplates(phoneNumberId);
       setTemplates(data);
-      if (data.length > 0) {
-        setLastSynced(data[0]?.lastSyncedAt);
-      }
+      if (data.length > 0) setLastSynced(data[0]?.lastSyncedAt);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -29,10 +27,14 @@ export default function TemplatePicker({ selected, onSelect }) {
   }
 
   async function handleSync() {
+    if (!phoneNumberId) {
+      setError("Select a phone number first to sync templates.");
+      return;
+    }
     setSyncing(true);
     setSyncResult(null);
     try {
-      const result = await api.syncTemplates();
+      const result = await api.syncTemplates(phoneNumberId);
       setSyncResult(result);
       await loadTemplates();
     } catch (err) {
@@ -42,11 +44,10 @@ export default function TemplatePicker({ selected, onSelect }) {
     }
   }
 
+  // Reload when phoneNumberId changes
   useEffect(() => {
-    loadTemplates().then(() => {
-      // Auto-sync if no templates found
-    }).catch(() => {});
-  }, []);
+    loadTemplates();
+  }, [phoneNumberId]);
 
   const filtered = templates.filter(
     (t) =>
@@ -57,7 +58,6 @@ export default function TemplatePicker({ selected, onSelect }) {
 
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -69,20 +69,14 @@ export default function TemplatePicker({ selected, onSelect }) {
             className="input pl-9"
           />
         </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="btn-secondary whitespace-nowrap"
-        >
+        <button onClick={handleSync} disabled={syncing || !phoneNumberId} className="btn-secondary whitespace-nowrap">
           <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
           {syncing ? "Syncing..." : "Sync Templates"}
         </button>
       </div>
 
       {lastSynced && (
-        <p className="text-xs text-gray-400">
-          Last synced: {new Date(lastSynced).toLocaleString()}
-        </p>
+        <p className="text-xs text-gray-400">Last synced: {new Date(lastSynced).toLocaleString()}</p>
       )}
 
       {syncResult && (
@@ -112,10 +106,12 @@ export default function TemplatePicker({ selected, onSelect }) {
         <div className="text-center py-12 card">
           <p className="text-gray-400 text-sm mb-3">
             {templates.length === 0
-              ? "No approved templates found. Click \"Sync Templates\" to fetch from Meta."
+              ? phoneNumberId
+                ? 'No templates found. Click "Sync Templates" to fetch from Meta.'
+                : "Select a phone number above to see its templates."
               : "No templates match your search."}
           </p>
-          {templates.length === 0 && (
+          {templates.length === 0 && phoneNumberId && (
             <button onClick={handleSync} disabled={syncing} className="btn-primary">
               <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
               Sync Now

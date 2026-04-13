@@ -12,65 +12,66 @@ const loginLimiter = rateLimit({
   message: { error: "Too many login attempts. Try again in a minute." },
 });
 
-// POST /api/auth/login
+// POST /api/auth/login — account user login
 router.post("/login", loginLimiter, async (req, res) => {
-  const { password } = req.body;
+  const { slug, password } = req.body;
 
-  const config = await prisma.config.findFirst();
-  if (!config) return res.status(500).json({ error: "App not configured" });
+  if (!slug) return res.status(400).json({ error: "Account slug is required" });
 
-  // If no appPassword is set, login freely with no password required
-  if (!config.appPassword) {
-    const token = signToken({ isAdmin: false });
-    res.cookie("token", token, {
-      httpOnly: true,
-      sameSite: "lax",
-      maxAge: 24 * 60 * 60 * 1000,
-    });
-    return res.json({ token });
+  const account = await prisma.account.findFirst({
+    where: { slug: slug.trim().toLowerCase(), isActive: true },
+  });
+  if (!account) return res.status(401).json({ error: "Account not found" });
+
+  // If no appPassword is set, login freely
+  if (!account.appPassword) {
+    const token = signToken({ accountId: account.id, isAdmin: false });
+    res.cookie("token", token, { httpOnly: true, sameSite: "lax", maxAge: 24 * 60 * 60 * 1000 });
+    return res.json({ token, accountSlug: account.slug });
   }
 
-  const match = await bcrypt.compare(password, config.appPassword);
+  const match = await bcrypt.compare(password || "", account.appPassword);
   if (!match) return res.status(401).json({ error: "Incorrect password" });
 
-  const token = signToken({ isAdmin: false });
-  res.cookie("token", token, {
-    httpOnly: true,
-    sameSite: "lax",
-    maxAge: 24 * 60 * 60 * 1000,
-  });
-  res.json({ token });
+  const token = signToken({ accountId: account.id, isAdmin: false });
+  res.cookie("token", token, { httpOnly: true, sameSite: "lax", maxAge: 24 * 60 * 60 * 1000 });
+  res.json({ token, accountSlug: account.slug });
 });
 
-// POST /api/auth/admin-login
+// POST /api/auth/admin-login — account admin login
 router.post("/admin-login", loginLimiter, async (req, res) => {
-  const { password } = req.body;
+  const { slug, password } = req.body;
+
+  if (!slug) return res.status(400).json({ error: "Account slug is required" });
   if (!password) return res.status(400).json({ error: "Password required" });
 
-  const config = await prisma.config.findFirst();
-  if (!config) return res.status(500).json({ error: "App not configured" });
+  const account = await prisma.account.findFirst({
+    where: { slug: slug.trim().toLowerCase(), isActive: true },
+  });
+  if (!account) return res.status(401).json({ error: "Account not found" });
 
-  const match = await bcrypt.compare(password, config.adminPassword);
+  const match = await bcrypt.compare(password, account.adminPassword);
   if (!match) return res.status(401).json({ error: "Incorrect admin password" });
 
-  const token = signToken({ isAdmin: true });
-  // Set both cookies so requireAuth and requireAdmin both work
-  res.cookie("token", token, {
-    httpOnly: true,
-    sameSite: "lax",
-    maxAge: 24 * 60 * 60 * 1000,
-  });
-  res.cookie("adminToken", token, {
-    httpOnly: true,
-    sameSite: "lax",
-    maxAge: 24 * 60 * 60 * 1000,
-  });
-  res.json({ token, isAdmin: true });
+  const token = signToken({ accountId: account.id, isAdmin: true });
+  res.cookie("token", token, { httpOnly: true, sameSite: "lax", maxAge: 24 * 60 * 60 * 1000 });
+  res.cookie("adminToken", token, { httpOnly: true, sameSite: "lax", maxAge: 24 * 60 * 60 * 1000 });
+  res.json({ token, isAdmin: true, accountSlug: account.slug });
 });
 
 // GET /api/auth/me
-router.get("/me", requireAuth, (req, res) => {
-  res.json({ isAuthenticated: true, isAdmin: req.user.isAdmin || false });
+router.get("/me", requireAuth, async (req, res) => {
+  const account = await prisma.account.findUnique({
+    where: { id: req.accountId },
+    select: { slug: true, appName: true },
+  });
+  res.json({
+    isAuthenticated: true,
+    isAdmin: req.user.isAdmin || false,
+    accountId: req.accountId,
+    accountSlug: account?.slug,
+    accountName: account?.appName,
+  });
 });
 
 // POST /api/auth/logout
@@ -80,18 +81,30 @@ router.post("/logout", (req, res) => {
   res.json({ success: true });
 });
 
-// GET /api/auth/config-public
-// Returns non-sensitive config for the login page (appName, branding)
+// GET /api/auth/config-public?slug=<account-slug>
+// Returns non-sensitive branding for the login page
 router.get("/config-public", async (req, res) => {
-  const config = await prisma.config.findFirst();
+  const slug = req.query.slug?.trim().toLowerCase();
+
+  let account = null;
+  if (slug) {
+    account = await prisma.account.findFirst({
+      where: { slug, isActive: true },
+    });
+  }
+
+  // Fall back to first account if no slug given (supports single-tenant use)
+  if (!account && !slug) {
+    account = await prisma.account.findFirst({ where: { isActive: true } });
+  }
+
   res.json({
-    appName: config?.appName || "Campaign Manager",
-    primaryColor: config?.primaryColor || "#1e40af",
-    secondaryColor: config?.secondaryColor || "#7c3aed",
-    logoUrl: config?.logoUrl || null,
-    faviconUrl: config?.faviconUrl || null,
-    requiresPassword: !!config?.appPassword,
+    appName: account?.appName || "Campaign Manager",
+    primaryColor: account?.primaryColor || "#1e40af",
+    secondaryColor: account?.secondaryColor || "#7c3aed",
+    logoUrl: account?.logoUrl || null,
+    faviconUrl: account?.faviconUrl || null,
+    requiresPassword: !!account?.appPassword,
+    accountFound: !!account,
   });
 });
-
-export default router;
