@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { api, getStoredSlug } from "./lib/api.js";
-
-import ThemeProvider from "./components/ThemeProvider.jsx";
+import ThemeProvider, { useConfig } from "./components/ThemeProvider.jsx";
 import Login from "./pages/Login.jsx";
 import Admin from "./pages/Admin.jsx";
 import CampaignHistory from "./pages/CampaignHistory.jsx";
@@ -24,6 +23,7 @@ function Spinner() {
 function AuthGuard({ children }) {
   const [status, setStatus] = useState("loading");
   const location = useLocation();
+  const { refreshConfig } = useConfig();
 
   useEffect(() => {
     api.me()
@@ -35,6 +35,7 @@ function AuthGuard({ children }) {
           const cfg = await api.publicConfig(slug);
           if (!cfg.requiresPassword && cfg.accountFound) {
             await api.login(slug, "");
+            refreshConfig(slug);
             setStatus("authed");
           } else {
             setStatus("unauthed");

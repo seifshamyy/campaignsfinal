@@ -10,9 +10,8 @@ export function useConfig() {
 export default function ThemeProvider({ children }) {
   const [config, setConfig] = useState(null);
 
-  const refreshConfig = useCallback(() => {
-    // Passes stored slug automatically via api.publicConfig()
-    api.publicConfig()
+  const refreshConfig = useCallback((slug) => {
+    api.publicConfig(slug)
       .then((cfg) => {
         setConfig(cfg);
         applyTheme(cfg);

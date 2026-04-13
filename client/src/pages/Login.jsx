@@ -1,19 +1,24 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, Lock, MessageSquare, Hash } from "lucide-react";
-import { api, getStoredSlug } from "../lib/api.js";
-import { applyTheme } from "../components/ThemeProvider.jsx";
+import { api, getStoredSlug, setStoredSlug } from "../lib/api.js";
+import { applyTheme, useConfig } from "../components/ThemeProvider.jsx";
 
 export default function Login({ adminMode = false }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const { refreshConfig } = useConfig();
   const from = location.state?.from?.pathname || (adminMode ? "/admin" : "/");
 
-  // Pre-fill slug from URL ?account= param, then localStorage, then empty
-  const [slug, setSlug] = useState(
-    searchParams.get("account") || getStoredSlug() || ""
-  );
+  // Pre-fill slug from URL ?account= param, then localStorage, then empty.
+  // Update stored slug synchronously so ThemeProvider's mount effect reads the
+  // same slug — prevents the "first/default account branding" race condition.
+  const urlSlug = searchParams.get("account");
+  const initialSlug = urlSlug || getStoredSlug() || "";
+  if (urlSlug) setStoredSlug(urlSlug);
+
+  const [slug, setSlug] = useState(initialSlug);
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
@@ -64,11 +69,13 @@ export default function Login({ adminMode = false }) {
     setError("");
 
     try {
+      const cleanSlug = slug.trim().toLowerCase();
       if (adminMode) {
-        await api.adminLogin(slug.trim().toLowerCase(), password);
+        await api.adminLogin(cleanSlug, password);
       } else {
-        await api.login(slug.trim().toLowerCase(), password);
+        await api.login(cleanSlug, password);
       }
+      refreshConfig(cleanSlug);
       navigate(from, { replace: true });
     } catch (err) {
       setError(err.message || "Incorrect credentials");
