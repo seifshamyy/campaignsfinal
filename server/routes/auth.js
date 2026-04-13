@@ -108,3 +108,5 @@ router.get("/config-public", async (req, res) => {
     accountFound: !!account,
   });
 });
+
+export default router;
