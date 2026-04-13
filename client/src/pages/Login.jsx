@@ -37,16 +37,6 @@ export default function Login({ adminMode = false }) {
       .catch(() => {});
   }, [slug]);
 
-  // Load default branding on mount (no slug yet)
-  useEffect(() => {
-    if (slug) return;
-    api.publicConfig()
-      .then((cfg) => {
-        setPublicConfig(cfg);
-        applyTheme(cfg);
-      })
-      .catch(() => {});
-  }, []);
 
   // If already logged in, redirect
   useEffect(() => {
