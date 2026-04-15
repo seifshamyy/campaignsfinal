@@ -32,6 +32,45 @@ export function parseTemplateToSchema(components) {
             paramIndex: i - 1,
           });
         }
+      } else if (component.format === "LOCATION") {
+        schema.columns.push(
+          {
+            key: "header_location_lat",
+            label: "Location Latitude",
+            description: "Latitude of the location to share",
+            example: "24.7136",
+            required: true,
+            componentType: "header",
+            locationType: "location",
+          },
+          {
+            key: "header_location_lng",
+            label: "Location Longitude",
+            description: "Longitude of the location to share",
+            example: "46.6753",
+            required: true,
+            componentType: "header",
+            locationType: "location",
+          },
+          {
+            key: "header_location_name",
+            label: "Location Name",
+            description: "Name displayed on the location card",
+            example: "Our Riyadh Branch",
+            required: false,
+            componentType: "header",
+            locationType: "location",
+          },
+          {
+            key: "header_location_address",
+            label: "Location Address",
+            description: "Address displayed on the location card",
+            example: "King Fahd Rd, Riyadh",
+            required: false,
+            componentType: "header",
+            locationType: "location",
+          }
+        );
       } else if (["IMAGE", "VIDEO", "DOCUMENT"].includes(component.format)) {
         // If the template was created with a static media file (header_handle),
         // the image is baked into the template — no URL parameter is needed when sending.
@@ -169,7 +208,18 @@ export function buildMetaPayload(template, rowData, paramSchema) {
   // Header component
   if (headerParams.length > 0) {
     const first = headerParams[0];
-    if (first.mediaType) {
+    if (first.locationType === "location") {
+      const location = {
+        latitude: String(rowData["header_location_lat"] || ""),
+        longitude: String(rowData["header_location_lng"] || ""),
+      };
+      if (rowData["header_location_name"]) location.name = String(rowData["header_location_name"]);
+      if (rowData["header_location_address"]) location.address = String(rowData["header_location_address"]);
+      components.push({
+        type: "header",
+        parameters: [{ type: "location", location }],
+      });
+    } else if (first.mediaType) {
       // Only include the header component if a media URL is actually provided.
       // Static image templates (image baked into the template) must NOT have
       // a header component in the send payload — Meta uses the embedded image.

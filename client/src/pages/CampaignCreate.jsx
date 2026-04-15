@@ -21,7 +21,15 @@ function buildPayload(template, rowData) {
 
   if (headerParams.length > 0) {
     const first = headerParams[0];
-    if (first.mediaType) {
+    if (first.locationType === "location") {
+      const location = {
+        latitude: String(rowData["header_location_lat"] || ""),
+        longitude: String(rowData["header_location_lng"] || ""),
+      };
+      if (rowData["header_location_name"]) location.name = String(rowData["header_location_name"]);
+      if (rowData["header_location_address"]) location.address = String(rowData["header_location_address"]);
+      components.push({ type: "header", parameters: [{ type: "location", location }] });
+    } else if (first.mediaType) {
       const mediaUrl = rowData[first.key];
       if (mediaUrl) {
         const mediaObj = { link: mediaUrl };
