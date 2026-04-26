@@ -215,12 +215,7 @@ export default function CampaignCreate() {
         ]);
         setPhoneNumbers(phones);
         setDefaultCC(cfg?.defaultCountryCode || "966");
-        if (cw?.chatwootVerified) {
-          setChatwootVerified(true);
-          setChatwootNote(
-            "📢 Campaign: {{campaign_name}}\n📋 Template: {{template_name}}\n📅 Sent: {{date}}\n📱 From: {{phone_label}}"
-          );
-        }
+        if (cw?.chatwootVerified) setChatwootVerified(true);
 
         // Auto-select single phone number
         if (phones.length === 1) setSelectedPhoneNumber(phones[0]);
@@ -246,6 +241,7 @@ export default function CampaignCreate() {
     if (selectedTemplate) {
       const date = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
       setCampaignName(`${selectedTemplate.name} — ${date}`);
+      if (chatwootVerified) setChatwootNote(selectedTemplate.bodyText || "");
     }
   }, [selectedTemplate]);
 
