@@ -6,6 +6,7 @@ import { prisma } from "../index.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { uploadImage } from "../middleware/upload.js";
 import { MetaApiClient, encryptToken, decryptToken } from "../services/meta-api.js";
+import { ChatwootClient } from "../services/chatwoot.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
@@ -250,6 +251,81 @@ router.delete("/clear-branding", async (_req, res) => {
   await prisma.account.update({
     where: { id: _req.accountId },
     data: { logoUrl: null, faviconUrl: null },
+  });
+  res.json({ success: true });
+});
+
+// ── Chatwoot Integration ──────────────────────────────────────────────────────
+
+// GET /api/admin/chatwoot
+router.get("/chatwoot", async (req, res) => {
+  const account = await prisma.account.findUnique({ where: { id: req.accountId } });
+  if (!account) return res.status(404).json({ error: "Account not found" });
+  res.json({
+    chatwootUrl:       account.chatwootUrl       || "",
+    chatwootAccountId: account.chatwootAccountId || "",
+    chatwootInboxId:   account.chatwootInboxId   || "",
+    chatwootVerified:  account.chatwootVerified   || false,
+    hasToken:          !!account.chatwootApiToken,
+  });
+});
+
+// PUT /api/admin/chatwoot — save credentials (token optional if not changing)
+router.put("/chatwoot", async (req, res) => {
+  const { chatwootUrl, chatwootApiToken, chatwootAccountId, chatwootInboxId } = req.body;
+  const update = { chatwootVerified: false }; // any change resets verified
+
+  if (chatwootUrl       !== undefined) update.chatwootUrl       = chatwootUrl       || null;
+  if (chatwootAccountId !== undefined) update.chatwootAccountId = chatwootAccountId ? Number(chatwootAccountId) : null;
+  if (chatwootInboxId   !== undefined) update.chatwootInboxId   = chatwootInboxId   ? Number(chatwootInboxId)   : null;
+  if (chatwootApiToken  && chatwootApiToken.trim()) update.chatwootApiToken = chatwootApiToken.trim();
+
+  await prisma.account.update({ where: { id: req.accountId }, data: update });
+  res.json({ success: true });
+});
+
+// POST /api/admin/chatwoot/test — test connection and mark verified
+router.post("/chatwoot/test", async (req, res) => {
+  const account = await prisma.account.findUnique({ where: { id: req.accountId } });
+  if (!account) return res.status(404).json({ error: "Account not found" });
+
+  if (!account.chatwootUrl || !account.chatwootApiToken || !account.chatwootAccountId || !account.chatwootInboxId) {
+    return res.status(400).json({ success: false, error: "All Chatwoot fields are required before testing" });
+  }
+
+  try {
+    const client = new ChatwootClient({
+      url:       account.chatwootUrl,
+      apiToken:  account.chatwootApiToken,
+      accountId: account.chatwootAccountId,
+      inboxId:   account.chatwootInboxId,
+    });
+
+    const result = await client.testConnection();
+
+    await prisma.account.update({
+      where: { id: req.accountId },
+      data:  { chatwootVerified: true },
+    });
+
+    res.json({ success: true, inboxName: result.inboxName, inboxChannel: result.inboxChannel });
+  } catch (err) {
+    await prisma.account.update({
+      where: { id: req.accountId },
+      data:  { chatwootVerified: false },
+    });
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/admin/chatwoot — remove integration
+router.delete("/chatwoot", async (req, res) => {
+  await prisma.account.update({
+    where: { id: req.accountId },
+    data: {
+      chatwootUrl: null, chatwootApiToken: null,
+      chatwootAccountId: null, chatwootInboxId: null, chatwootVerified: false,
+    },
   });
   res.json({ success: true });
 });

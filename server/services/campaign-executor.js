@@ -1,6 +1,7 @@
 import { prisma } from "../index.js";
 import { MetaApiClient, decryptToken, sendWithRetry } from "./meta-api.js";
 import { buildMetaPayload } from "./template-parser.js";
+import { ChatwootClient, interpolateNote } from "./chatwoot.js";
 
 // SSE client registry: campaignId → Set of res objects
 const sseClients = new Map();
@@ -36,7 +37,13 @@ export async function executeCampaign(campaignId) {
     include: {
       template: true,
       phoneNumber: true,
-      account: { select: { sendRatePerSecond: true } },
+      account: {
+        select: {
+          sendRatePerSecond: true,
+          chatwootUrl: true, chatwootApiToken: true,
+          chatwootAccountId: true, chatwootInboxId: true, chatwootVerified: true,
+        },
+      },
     },
   });
 
@@ -73,6 +80,26 @@ export async function executeCampaign(campaignId) {
     data: { status: "sending", startedAt: new Date() },
   });
 
+  // Build Chatwoot client — only if integration is verified AND this campaign has a note
+  const acc = campaign.account;
+  const chatwootClient =
+    campaign.chatwootNote &&
+    acc.chatwootVerified &&
+    acc.chatwootUrl &&
+    acc.chatwootApiToken &&
+    acc.chatwootAccountId &&
+    acc.chatwootInboxId
+      ? new ChatwootClient({
+          url:       acc.chatwootUrl,
+          apiToken:  acc.chatwootApiToken,
+          accountId: acc.chatwootAccountId,
+          inboxId:   acc.chatwootInboxId,
+        })
+      : null;
+
+  const noteTemplate = campaign.chatwootNote || null;
+  const sentDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+
   let sent = campaign.sent;
   let failed = campaign.failed;
   const startTime = Date.now();
@@ -106,6 +133,20 @@ export async function executeCampaign(campaignId) {
 
       sent++;
       await prisma.campaign.update({ where: { id: campaignId }, data: { sent } });
+
+      // Chatwoot private note — fire-and-forget, never blocks the campaign
+      if (chatwootClient && noteTemplate) {
+        const note = interpolateNote(noteTemplate, {
+          campaign_name:  campaign.name,
+          template_name:  campaign.template.name,
+          date:           sentDate,
+          phone_number:   msg.phoneNumber,
+          phone_label:    campaign.phoneNumber?.label || "",
+        });
+        chatwootClient.postCampaignNote(msg.phoneNumber, note).catch((err) =>
+          console.warn(`[chatwoot] ${msg.phoneNumber}: ${err.message}`)
+        );
+      }
 
       emitSse(campaignId, "progress", {
         sent, failed, total,

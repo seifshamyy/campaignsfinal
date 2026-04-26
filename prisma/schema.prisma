@@ -36,6 +36,12 @@ model Account {
   defaultCountryCode String @default("966") @map("default_country_code")
   sendRatePerSecond  Int    @default(10) @map("send_rate_per_second")
 
+  chatwootUrl       String?  @map("chatwoot_url")
+  chatwootApiToken  String?  @map("chatwoot_api_token")
+  chatwootAccountId Int?     @map("chatwoot_account_id")
+  chatwootInboxId   Int?     @map("chatwoot_inbox_id")
+  chatwootVerified  Boolean  @default(false) @map("chatwoot_verified")
+
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -123,6 +129,7 @@ model Campaign {
 
   originalFileName String? @map("original_file_name")
   cancelRequested  Boolean @default(false) @map("cancel_requested")
+  chatwootNote     String? @map("chatwoot_note")
 
   startedAt   DateTime? @map("started_at")
   completedAt DateTime? @map("completed_at")

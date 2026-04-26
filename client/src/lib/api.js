@@ -190,6 +190,12 @@ export const api = {
   deletePhoneNumber: (id) => request("DELETE", `/admin/phone-numbers/${id}`),
   testPhoneNumber: (id) => request("POST", `/admin/phone-numbers/${id}/test`),
 
+  // ── Chatwoot Integration ──────────────────────────────────────────────────
+  getChatwootConfig:    ()     => request("GET",    "/admin/chatwoot"),
+  saveChatwootConfig:   (data) => request("PUT",    "/admin/chatwoot", data),
+  testChatwootConfig:   ()     => request("POST",   "/admin/chatwoot/test"),
+  removeChatwootConfig: ()     => request("DELETE", "/admin/chatwoot"),
+
   // ── Super Admin ───────────────────────────────────────────────────────────
   superAdmin: {
     login: async (password) => {

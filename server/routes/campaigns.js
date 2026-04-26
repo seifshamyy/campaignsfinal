@@ -55,7 +55,7 @@ router.get("/", async (req, res) => {
 
 // POST /api/campaigns
 router.post("/", async (req, res) => {
-  const { name, templateId, phoneNumberId, rows, columnMapping, originalFileName } = req.body;
+  const { name, templateId, phoneNumberId, rows, columnMapping, originalFileName, chatwootNote } = req.body;
 
   if (!templateId || !rows?.length) {
     return res.status(400).json({ error: "templateId and rows are required" });
@@ -135,6 +135,7 @@ router.post("/", async (req, res) => {
         status: "draft",
         totalRecipients: validMessages.length,
         originalFileName,
+        chatwootNote: chatwootNote || null,
       },
     });
 

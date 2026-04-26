@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Save, Eye, EyeOff, CheckCircle, XCircle, RefreshCw,
   Trash2, Upload, AlertTriangle, Loader2, Plus, Phone,
-  Pencil, X, Wifi, WifiOff
+  Pencil, X, Wifi, WifiOff, MessageCircle, Link
 } from "lucide-react";
 import { api } from "../lib/api.js";
 import { applyTheme, useConfig } from "../components/ThemeProvider.jsx";
@@ -163,6 +163,14 @@ export default function Admin() {
   const [testResults, setTestResults] = useState({}); // { [phoneId]: result }
   const [deletingPhone, setDeletingPhone] = useState(null);
 
+  // Chatwoot state
+  const [chatwoot, setChatwoot] = useState(null);
+  const [chatwootForm, setChatwootForm] = useState({ url: "", apiToken: "", accountId: "", inboxId: "" });
+  const [showCwToken, setShowCwToken] = useState(false);
+  const [cwSaving, setCwSaving] = useState(false);
+  const [cwTesting, setCwTesting] = useState(false);
+  const [cwTestResult, setCwTestResult] = useState(null);
+
   // Form state
   const [form, setForm] = useState({});
   const [adminPwForm, setAdminPwForm] = useState({ current: "", next: "" });
@@ -175,10 +183,11 @@ export default function Admin() {
 
   async function load() {
     try {
-      const [c, s, phones] = await Promise.all([
+      const [c, s, phones, cw] = await Promise.all([
         api.getAdminConfig(),
         api.getAdminStats(),
         api.getPhoneNumbers(),
+        api.getChatwootConfig(),
       ]);
       setConfig(c);
       setDbStats(s);
@@ -189,6 +198,13 @@ export default function Admin() {
         secondaryColor: c.secondaryColor || "#7c3aed",
         defaultCountryCode: c.defaultCountryCode,
         sendRatePerSecond: c.sendRatePerSecond,
+      });
+      setChatwoot(cw);
+      setChatwootForm({
+        url:       cw.chatwootUrl       || "",
+        apiToken:  "",                        // never pre-fill token
+        accountId: cw.chatwootAccountId ? String(cw.chatwootAccountId) : "",
+        inboxId:   cw.chatwootInboxId   ? String(cw.chatwootInboxId)   : "",
       });
     } catch {}
     setLoading(false);
@@ -265,6 +281,55 @@ export default function Admin() {
     } catch (err) {
       showToast(err.message || "Cannot delete", "error");
       setDeletingPhone(null);
+    }
+  }
+
+  async function handleSaveChatwoot() {
+    setCwSaving(true);
+    setCwTestResult(null);
+    try {
+      await api.saveChatwootConfig({
+        chatwootUrl:       chatwootForm.url,
+        chatwootApiToken:  chatwootForm.apiToken || undefined,
+        chatwootAccountId: chatwootForm.accountId,
+        chatwootInboxId:   chatwootForm.inboxId,
+      });
+      const cw = await api.getChatwootConfig();
+      setChatwoot(cw);
+      showToast("Chatwoot credentials saved");
+    } catch (err) {
+      showToast(err.message || "Failed to save", "error");
+    } finally {
+      setCwSaving(false);
+    }
+  }
+
+  async function handleTestChatwoot() {
+    setCwTesting(true);
+    setCwTestResult(null);
+    try {
+      const result = await api.testChatwootConfig();
+      setCwTestResult(result);
+      if (result.success) {
+        setChatwoot((c) => ({ ...c, chatwootVerified: true }));
+        showToast(`Connected to inbox: ${result.inboxName}`);
+      }
+    } catch (err) {
+      setCwTestResult({ success: false, error: err.message });
+    } finally {
+      setCwTesting(false);
+    }
+  }
+
+  async function handleRemoveChatwoot() {
+    try {
+      await api.removeChatwootConfig();
+      setChatwoot({ chatwootUrl: "", chatwootAccountId: "", chatwootInboxId: "", chatwootVerified: false, hasToken: false });
+      setChatwootForm({ url: "", apiToken: "", accountId: "", inboxId: "" });
+      setCwTestResult(null);
+      showToast("Chatwoot integration removed");
+    } catch (err) {
+      showToast(err.message || "Failed to remove", "error");
     }
   }
 
@@ -449,7 +514,106 @@ export default function Admin() {
         </div>
       </Section>
 
-      {/* 2. App Security */}
+      {/* 2. Chatwoot Integration */}
+      <Section title="Chatwoot Integration">
+        <p className="text-xs text-slate-500">
+          When configured and tested, you can attach a private note to each Chatwoot conversation at campaign creation time — so agents always know which campaign triggered a reply.
+        </p>
+
+        {chatwoot?.chatwootVerified && (
+          <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+            <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+            Integration verified and active
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Chatwoot URL" hint="e.g. https://app.chatwoot.com">
+            <div className="relative">
+              <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="url"
+                value={chatwootForm.url}
+                onChange={(e) => { setChatwootForm({ ...chatwootForm, url: e.target.value }); setCwTestResult(null); }}
+                className="input pl-9"
+                placeholder="https://app.chatwoot.com"
+              />
+            </div>
+          </Field>
+
+          <Field label="API Access Token" hint={chatwoot?.hasToken ? "Token saved — enter new value to replace" : "Settings → API Access Token"}>
+            <div className="relative">
+              <input
+                type={showCwToken ? "text" : "password"}
+                value={chatwootForm.apiToken}
+                onChange={(e) => { setChatwootForm({ ...chatwootForm, apiToken: e.target.value }); setCwTestResult(null); }}
+                className="input pr-10"
+                placeholder={chatwoot?.hasToken ? "Token saved — enter to update" : "Enter API access token"}
+              />
+              <button type="button" onClick={() => setShowCwToken(!showCwToken)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                {showCwToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </Field>
+
+          <Field label="Account ID" hint="Your Chatwoot numeric account ID">
+            <input
+              type="number"
+              value={chatwootForm.accountId}
+              onChange={(e) => { setChatwootForm({ ...chatwootForm, accountId: e.target.value }); setCwTestResult(null); }}
+              className="input"
+              placeholder="3"
+            />
+          </Field>
+
+          <Field label="Inbox ID" hint="The WhatsApp inbox ID in Chatwoot">
+            <input
+              type="number"
+              value={chatwootForm.inboxId}
+              onChange={(e) => { setChatwootForm({ ...chatwootForm, inboxId: e.target.value }); setCwTestResult(null); }}
+              className="input"
+              placeholder="7"
+            />
+          </Field>
+        </div>
+
+        {cwTestResult && (
+          <div className={`flex items-start gap-2 text-xs rounded-lg px-3 py-2 border ${
+            cwTestResult.success
+              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+              : "bg-red-50 text-red-800 border-red-200"
+          }`}>
+            {cwTestResult.success
+              ? <><CheckCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />Connected — inbox: <strong className="ml-1">{cwTestResult.inboxName}</strong></>
+              : <><XCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />{cwTestResult.error}</>
+            }
+          </div>
+        )}
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={handleSaveChatwoot} disabled={cwSaving || !chatwootForm.url || !chatwootForm.accountId || !chatwootForm.inboxId} className="btn-secondary">
+            {cwSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Save Credentials
+          </button>
+          <button
+            onClick={handleTestChatwoot}
+            disabled={cwTesting || !chatwoot?.chatwootUrl || !chatwoot?.hasToken}
+            className="btn-primary"
+            title={!chatwoot?.chatwootUrl || !chatwoot?.hasToken ? "Save credentials first" : ""}
+          >
+            {cwTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
+            Test Connection
+          </button>
+          {chatwoot?.hasToken && (
+            <button onClick={handleRemoveChatwoot} className="text-xs text-red-500 hover:text-red-700 ml-auto">
+              Remove integration
+            </button>
+          )}
+        </div>
+      </Section>
+
+      {/* App Security */}
       <Section title="App Security">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-3">

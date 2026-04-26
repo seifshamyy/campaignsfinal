@@ -201,17 +201,26 @@ export default function CampaignCreate() {
   const [campaignId, setCampaignId] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sendError, setSendError] = useState(null);
+  const [chatwootVerified, setChatwootVerified] = useState(false);
+  const [chatwootNote, setChatwootNote] = useState("");
 
   // Load phone numbers on mount
   useEffect(() => {
     async function init() {
       try {
-        const [phones, cfg] = await Promise.all([
+        const [phones, cfg, cw] = await Promise.all([
           api.getAccountPhoneNumbers(),
           api.publicConfig(),
+          api.getChatwootConfig().catch(() => null),
         ]);
         setPhoneNumbers(phones);
         setDefaultCC(cfg?.defaultCountryCode || "966");
+        if (cw?.chatwootVerified) {
+          setChatwootVerified(true);
+          setChatwootNote(
+            "📢 Campaign: {{campaign_name}}\n📋 Template: {{template_name}}\n📅 Sent: {{date}}\n📱 From: {{phone_label}}"
+          );
+        }
 
         // Auto-select single phone number
         if (phones.length === 1) setSelectedPhoneNumber(phones[0]);
@@ -282,6 +291,7 @@ export default function CampaignCreate() {
         phoneNumberId: selectedPhoneNumber.id,
         rows: mappedRows,
         originalFileName: parsedData.fileName,
+        chatwootNote: chatwootVerified && chatwootNote.trim() ? chatwootNote.trim() : null,
       });
 
       setCampaignId(result.campaign.id);
@@ -486,6 +496,35 @@ export default function CampaignCreate() {
                 </div>
               </div>
             </div>
+
+            {chatwootVerified && (
+              <div className="card p-5 space-y-3 border-violet-200">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-full bg-violet-100 flex items-center justify-center shrink-0">
+                    <span className="text-violet-600 text-xs font-bold">C</span>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-900">Chatwoot Private Note</p>
+                  <span className="ml-auto text-xs text-slate-400">optional</span>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Posted on each contact's conversation in Chatwoot after the message is sent.
+                  Use <code className="bg-slate-100 px-1 rounded">{"{{campaign_name}}"}</code>,{" "}
+                  <code className="bg-slate-100 px-1 rounded">{"{{template_name}}"}</code>,{" "}
+                  <code className="bg-slate-100 px-1 rounded">{"{{date}}"}</code>,{" "}
+                  <code className="bg-slate-100 px-1 rounded">{"{{phone_label}}"}</code>.
+                </p>
+                <textarea
+                  rows={4}
+                  value={chatwootNote}
+                  onChange={(e) => setChatwootNote(e.target.value)}
+                  className="input font-mono text-xs resize-none"
+                  placeholder="Leave empty to skip"
+                />
+                {!chatwootNote.trim() && (
+                  <p className="text-xs text-amber-600">Empty — no note will be posted to Chatwoot.</p>
+                )}
+              </div>
+            )}
 
             <PayloadPreview template={selectedTemplate} sampleRow={validation.valid[0]} selectedPhoneNumber={selectedPhoneNumber} />
 
