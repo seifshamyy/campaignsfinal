@@ -90,8 +90,8 @@ export class ChatwootClient {
       phone_number: normalized,
     });
 
-    // Chatwoot wraps create response in { payload: contact } in some versions
-    return created?.payload ?? created;
+    // Chatwoot returns { payload: { contact: {...}, contact_inbox: {...} } }
+    return created?.payload?.contact ?? created?.payload ?? created;
   }
 
   // ── Conversation ──────────────────────────────────────────────────────────
