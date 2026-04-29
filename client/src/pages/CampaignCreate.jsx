@@ -208,14 +208,13 @@ export default function CampaignCreate() {
   useEffect(() => {
     async function init() {
       try {
-        const [phones, cfg, cw] = await Promise.all([
+        const [phones, cfg] = await Promise.all([
           api.getAccountPhoneNumbers(),
           api.publicConfig(),
-          api.getChatwootConfig().catch(() => null),
         ]);
         setPhoneNumbers(phones);
         setDefaultCC(cfg?.defaultCountryCode || "966");
-        if (cw?.chatwootVerified) setChatwootVerified(true);
+        if (cfg?.chatwootVerified) setChatwootVerified(true);
 
         // Auto-select single phone number
         if (phones.length === 1) setSelectedPhoneNumber(phones[0]);

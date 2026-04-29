@@ -107,6 +107,7 @@ router.get("/config-public", async (req, res) => {
     requiresPassword: !!account?.appPassword,
     accountFound: !!account,
     defaultCountryCode: account?.defaultCountryCode || "966",
+    chatwootVerified: !!account?.chatwootVerified,
   });
 });
 
