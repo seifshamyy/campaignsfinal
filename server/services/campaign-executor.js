@@ -103,20 +103,28 @@ export async function executeCampaign(campaignId) {
   let sent = campaign.sent;
   let failed = campaign.failed;
   const startTime = Date.now();
+  // targetIntervalMs is the minimum gap between send starts.
+  // We subtract elapsed time so DB + API latency doesn't add on top.
+  const targetIntervalMs = 1000 / sendRate;
 
-  for (const msg of messages) {
-    // Check for cancellation
-    const fresh = await prisma.campaign.findUnique({
-      where: { id: campaignId },
-      select: { cancelRequested: true },
-    });
-    if (fresh?.cancelRequested) {
-      await prisma.campaign.update({
+  for (let i = 0; i < messages.length; i++) {
+    const iterStart = Date.now();
+    const msg = messages[i];
+
+    // Cancellation check — every 10 messages to avoid a DB round-trip per send
+    if (i % 10 === 0) {
+      const fresh = await prisma.campaign.findUnique({
         where: { id: campaignId },
-        data: { status: "cancelled", completedAt: new Date() },
+        select: { cancelRequested: true },
       });
-      emitSse(campaignId, "cancelled", { sent, failed, total });
-      return;
+      if (fresh?.cancelRequested) {
+        await prisma.campaign.update({
+          where: { id: campaignId },
+          data: { status: "cancelled", completedAt: new Date(), sent, failed },
+        });
+        emitSse(campaignId, "cancelled", { sent, failed, total });
+        return;
+      }
     }
 
     const rowData = { phone_number: msg.phoneNumber, ...(msg.params || {}) };
@@ -126,13 +134,18 @@ export async function executeCampaign(campaignId) {
       const result = await sendWithRetry(client, payload);
       const metaId = result?.messages?.[0]?.id;
 
+      // Message status update — always needed for reporting
       await prisma.message.update({
         where: { id: msg.id },
         data: { status: "sent", metaMessageId: metaId, sentAt: new Date() },
       });
 
       sent++;
-      await prisma.campaign.update({ where: { id: campaignId }, data: { sent } });
+
+      // Campaign counter flush — every 10 messages or on the last one
+      if ((i + 1) % 10 === 0 || i === messages.length - 1) {
+        await prisma.campaign.update({ where: { id: campaignId }, data: { sent, failed } });
+      }
 
       // Chatwoot private note — fire-and-forget, never blocks the campaign
       if (chatwootClient && noteTemplate) {
@@ -167,7 +180,10 @@ export async function executeCampaign(campaignId) {
       });
 
       failed++;
-      await prisma.campaign.update({ where: { id: campaignId }, data: { failed } });
+
+      if ((i + 1) % 10 === 0 || i === messages.length - 1) {
+        await prisma.campaign.update({ where: { id: campaignId }, data: { sent, failed } });
+      }
 
       emitSse(campaignId, "progress", {
         sent, failed, total,
@@ -181,7 +197,7 @@ export async function executeCampaign(campaignId) {
       if (FATAL_CODES.has(err.code)) {
         await prisma.campaign.update({
           where: { id: campaignId },
-          data: { status: "failed", completedAt: new Date() },
+          data: { status: "failed", completedAt: new Date(), sent, failed },
         });
         emitSse(campaignId, "error", {
           message: "Meta access token expired. Please update your token in Admin settings.",
@@ -190,7 +206,11 @@ export async function executeCampaign(campaignId) {
       }
     }
 
-    await sleep(delayMs);
+    // Elapsed-time-aware sleep: only wait the remaining time to hit the
+    // target interval. If API + DB already took longer, don't sleep at all.
+    const elapsed = Date.now() - iterStart;
+    const remaining = Math.max(0, targetIntervalMs - elapsed);
+    if (remaining > 0) await sleep(remaining);
   }
 
   const duration = (Date.now() - startTime) / 1000;
